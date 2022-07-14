@@ -1,0 +1,90 @@
+---
+title: "ETL Procedure"
+output: html_notebook
+editor_options: 
+  chunk_output_type: inline
+---
+
+```{r include=FALSE}
+library(skillsTools)
+dbPath <- "D:/localRepos/skills-demo/shiny-app"
+LLTunaBillfishNum_path <- "D:/localRepos/skills-demo/raw-data/PublicLLTunaBillfishNum.csv"
+LLTunaBillfishMt_path <- "D:/localRepos/skills-demo/raw-data/PublicLLTunaBillfishMt.csv"
+```
+
+# Data sources
+
+## IATTC public domain data
+
+IATTC data are summaries of extensive data sets, restricted to a prescribed spatial resolution and striped of confidential information. All data sets are fully documented, and can be found in well-known flat text formats. Anyone can access this information following [this link](https://www.iattc.org/en-US/Data/Public-domain "iattc public domain info").
+
+### Tuna and Billfish Catches on Large Authorized Longline Vessels
+
+This data comes from industrial ships, that operate in the open sea (i.e. small coastal boats are excluded). This vessels are 24 m or longer and usually have a significant carrying capacity. The spatial resolution is restricted to a grid of 5 degrees of latitude and longitude.
+
+Most of this vessels catch Bigeye Tuna, which means that their catching method (rigging and strategies) differs from that of coastal longliners. Bigeye tuna likes deeper waters than Yellowfin tuna for example, and the take away is that ecological interactions between this fleet and non-targeted catch differs greatly from their coastal fleet counterpart.
+
+Data is delivered in flat format, with columns for year, month, flag, latitude and longitude, number of hooks, and columns for catches for main species by number and by weight. So to tidy this dataset, we need to *unpivot* the species columns into one column containing the species names.
+
+To do this, I will create a function that:
+
+1.  Checks if a database exists. If not, it will create the database.
+2.  If a database exists, checks whether the table with Longline data also exists. If it does, the function returns.
+3.  If the table does not exists, then it will process the data and save it to the database.
+
+```{r echo=TRUE, results='hide'}
+if (!CheckDBExists(dbPath)) CreateDB(dbPath)
+
+if(!CheckTblLLTunaBillfish(dbPath))
+{
+  # Count data (read and convert data type)
+  LlData <- read_csv(LLTunaBillfishNum_path
+                     ,col_types = "iicddidddddddddddnn------------")
+  LL_cols <- colnames(LlData)
+  
+  LLDatan <- LlData %>% 
+    # Get only count variable
+    select(c(
+      1:6, # Attribute cols
+      #Spp Cols count (use regex to get all spp names followed by 'n')
+      LL_cols[str_which(LL_cols, "(?<=[:upper:]{3})n")])) %>%  
+      pivot_longer(cols = LL_cols[str_which(LL_cols, "(?<=[:upper:]{3})n")] 
+                   ,names_to = "Species"
+                   ,values_to = "Count") %>%  
+    # remove n from spp name
+    mutate(Species = str_replace(Species,"n","")) %>% 
+    mutate(Count = as.integer(Count))
+  
+  #Weight Data (similar to Count Transformation)
+  LlData <- read_csv(LLTunaBillfishMt_path
+                     ,col_types = "iicddi-------------dddddddddddd")
+  LL_cols <- colnames(LlData)
+  
+  LLDatamt <- LlData %>% 
+    select(c(
+      1:6, 
+      LL_cols[str_which(LL_cols, "(?<=[:upper:]{3})mt")])) %>%  
+      pivot_longer(cols = LL_cols[str_which(LL_cols, "(?<=[:upper:]{3})mt")] 
+                   ,names_to = "Species"
+                   ,values_to = "Weight (mt)") %>%  
+    mutate(Species = str_replace(Species,"mt",""))
+  
+  # Clean some memory before joins
+  rm(LlData)
+  gc()
+  
+  # Join tables
+  LLDatan <- LLDatan %>% 
+    inner_join(LLDatamt, by = c("Year", "Month", "Flag", "LatC5", "LonC5", "Hooks", "Species")) %>% 
+    rename(Lat = LatC5, Lon = LonC5)
+  
+  # Clean
+  rm(LLDatamt)
+  gc()
+  
+  WriteLLTunaBilfishTbl(dbPath, LLDatan)
+  rm(LLDatan)
+  
+}
+
+```
