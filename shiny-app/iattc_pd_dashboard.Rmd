@@ -1,0 +1,205 @@
+---
+title: "IATTC Public Domain Data"
+runtime: shiny
+output: 
+  flexdashboard::flex_dashboard:
+    orientation: columns
+    vertical_layout: fill
+    theme: 
+      bootswatch: united
+    logo: logo.png
+    favicon: logo.png
+---
+
+# Page 1
+
+```{r setup, include=FALSE, context = "server"}
+library(flexdashboard)
+library(shiny)
+library(skillsTools) #loads tidyverse, fs, RSQlite
+library(dygraphs)
+# library(leaflet)
+# bslib::bs_themer() # Activates Theme selection tool
+# thematic::thematic_rmd() # set ggplot in theme colors
+
+
+# TODO
+## Replace this with proper database agnostic function
+con <- dbConnect(RSQLite::SQLite(), "D:/localRepos/skills-demo/shiny-app/iattc_pd.sqlite3")
+
+tryCatch({
+  dat_sp_catch_by_spp <- dbReadTable(con, "aux_summ_time_flag")
+}, finally = dbDisconnect(con)
+)
+
+con <- dbConnect(RSQLite::SQLite(), "D:/localRepos/skills-demo/shiny-app/iattc_pd.sqlite3")
+qry_time <- 
+"SELECT Year, Species, SUM(`Weight (mt)`) AS Weight
+FROM LLTunaBillfish
+GROUP BY Year,  Species
+UNION
+SELECT Year, 'ALL' AS Species, SUM(`Weight (mt)`) AS Weight
+FROM LLTunaBillfish
+GROUP BY Year;"
+
+tryCatch({
+  dat_spp_time <- dbGetQuery(con, qry_time)
+}, finally = dbDisconnect(con)
+)
+
+```
+
+## Column {.sidebar data-width=200}
+
+```{r}
+selectInput("selectedSpp"
+            , label = "Select a species"
+            , choices = skillsTools::GetSppNames(".")
+            , multiple = FALSE
+            , selected = "ALL")
+
+actionButton("submitP1", label = "Apply", icon = icon("filter"))
+```
+
+
+## Column
+### Historical catches by species {data-height=300}
+
+```{r}
+# Get spp from input when Apply button is pressed
+# add ignoreNULL = FALSE, this allows to use the default selected value for the input
+this_spp <- eventReactive(input$submitP1, valueExpr = input$selectedSpp,ignoreNULL = FALSE)
+
+```
+
+
+```{r}
+
+renderPlot( MapCatchesBySpp(filter(dat_sp_catch_by_spp, Species == this_spp() ))) 
+```
+
+### Time series {data-height=150}
+
+```{r}
+renderDygraph({
+  # browser()
+  plot_dat_spp_time <-
+    dat_spp_time %>%
+    filter(Species == this_spp()) %>%
+    select(-Species)
+  dygraph(plot_dat_spp_time) %>% dyRangeSelector()
+})
+```
+
+# Page
+
+## Column {data-width=350}
+
+
+### Chart B
+
+```{r}
+inputPanel(numericInput(
+  "num1",
+  "Input Between 1 and 50",
+  value = 25,
+  min = 1,
+  max = 50,
+  step = 5
+))
+
+renderGauge(
+  gauge(
+  input$num1,
+  min = 1,
+  max = 50
+  ,
+  sectors = gaugeSectors(
+    success = c(1, 20),
+    warning = c(21, 40),
+    danger = c(41, 50),
+    colors = c("green", "yellow", "red")
+  ),
+)
+  
+)
+```
+
+### Linking
+
+You can link to a dashboard page with either of the following syntaxes:
+
+[Page 2]
+
+[Page Two](#page-2)
+
+The second syntax is used when you want a custom name for the link 
+(rather than just using the page title).
+
+# Page 2 {data-orientation=rows data-navmenu="Menu B"}
+
+## A new row
+
+
+### Articles per Day
+
+```{r}
+articles <- 3
+valueBox(articles, icon = "fa-pencil")
+```
+
+### Comments per Day
+
+```{r}
+comments <- 736
+valueBox(comments, icon = "fa-comments")
+```
+
+### Spam per Day
+
+```{r}
+spam <- formatC(23456789,big.mark = " ",format = "f", digits = 0) 
+valueBox(spam, 
+         icon = "fa-trash",
+         color = ifelse(spam > 10, "warning", "primary"),caption = "Spam")
+```
+
+
+## Row {.tabset .tabset-fade}
+
+
+### Tips
+
+No separar por comas los argumentos para cada Pagina, colunma/fila, o cuadro
+
+### Layout
+
+Incluye varios temas. Ver los temas dispobibles [aquí](https://pkgs.rstudio.com/flexdashboard/articles/using.html#appearance).
+Otros temas pueden romper los widgets.
+
+
+
+
+# Page 3 {data-orientation=rows data-navmenu="Menu B"}
+
+## Row {data-height=2}
+
+### Chart D
+```{r}
+plot(1,1)
+```
+
+## second row page 3 {data-height=1}
+
+
+### Chart E {data-width=3}
+
+```{r}
+plot(1,1)
+```
+
+### Chart F {data-width=1}
+
+```{r}
+plot(1,1)
+```
