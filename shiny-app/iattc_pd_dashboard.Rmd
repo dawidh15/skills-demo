@@ -11,7 +11,7 @@ output:
     favicon: logo.png
 ---
 
-# Page 1
+# Page 1 {data-orientation=rows}
 
 ```{r setup, include=FALSE, context = "server"}
 library(flexdashboard)
@@ -22,30 +22,15 @@ library(dygraphs)
 # bslib::bs_themer() # Activates Theme selection tool
 # thematic::thematic_rmd() # set ggplot in theme colors
 
+# ------------CACHE----------------
+# Store cache on disk, is persistent across R processes
+# Otherwise, cache is stored in memory
+# See https://shiny.rstudio.com/articles/caching.html
+#shinyOptions(cache = cachem::cache_disk(file.path(dirname(tempdir()), "myapp-cache")))
+shinyOptions(cache = cachem::cache_disk(path_join(c(".","appCache"))))
 
-# TODO
-## Replace this with proper database agnostic function
-con <- dbConnect(RSQLite::SQLite(), "D:/localRepos/skills-demo/shiny-app/iattc_pd.sqlite3")
-
-tryCatch({
-  dat_sp_catch_by_spp <- dbReadTable(con, "aux_summ_time_flag")
-}, finally = dbDisconnect(con)
-)
-
-con <- dbConnect(RSQLite::SQLite(), "D:/localRepos/skills-demo/shiny-app/iattc_pd.sqlite3")
-qry_time <- 
-"SELECT Year, Species, SUM(`Weight (mt)`) AS Weight
-FROM LLTunaBillfish
-GROUP BY Year,  Species
-UNION
-SELECT Year, 'ALL' AS Species, SUM(`Weight (mt)`) AS Weight
-FROM LLTunaBillfish
-GROUP BY Year;"
-
-tryCatch({
-  dat_spp_time <- dbGetQuery(con, qry_time)
-}, finally = dbDisconnect(con)
-)
+dat_sp_catch_by_spp <- GetTable(".", "General Spatial Data")
+dat_spp_time <- GetTable(".", "Catch Time Series")
 
 ```
 
@@ -62,33 +47,52 @@ actionButton("submitP1", label = "Apply", icon = icon("filter"))
 ```
 
 
-## Column
-### Historical catches by species {data-height=300}
+## Row  {data-height=300}
+
+### Instructions
+
+- Hola
+- Mundo
+
+### Historical catches by species
 
 ```{r}
 # Get spp from input when Apply button is pressed
 # add ignoreNULL = FALSE, this allows to use the default selected value for the input
-this_spp <- eventReactive(input$submitP1, valueExpr = input$selectedSpp,ignoreNULL = FALSE)
+#this_spp <- eventReactive(input$submitP1, valueExpr = input$selectedSpp,ignoreNULL = FALSE)
 
 ```
 
 
 ```{r}
-
-renderPlot( MapCatchesBySpp(filter(dat_sp_catch_by_spp, Species == this_spp() ))) 
+fillCol(
+  plotOutput( "HistoricalCatchMap", height = "100%" )
+)
+output$HistoricalCatchMap <- 
+  renderPlot( MapCatchesBySpp(filter(dat_sp_catch_by_spp, Species == input$selectedSpp ))) %>% 
+  bindCache(input$selectedSpp) %>% 
+  bindEvent(input$submitP1, ignoreNULL = FALSE)
 ```
 
-### Time series {data-height=150}
+## Row {data-height=150}
+### Time series
 
 ```{r}
-renderDygraph({
-  # browser()
-  plot_dat_spp_time <-
-    dat_spp_time %>%
-    filter(Species == this_spp()) %>%
-    select(-Species)
-  dygraph(plot_dat_spp_time) %>% dyRangeSelector()
-})
+fillCol(
+ dygraphOutput("CatchTimeSeries", height = "100%") 
+)
+
+output$CatchTimeSeries <- 
+  renderDygraph({
+    # browser()
+    plot_dat_spp_time <-
+      dat_spp_time %>%
+      filter(Species == input$selectedSpp) %>%
+      select(-Species)
+    dygraph(plot_dat_spp_time) %>% dyRangeSelector()
+  }) %>% 
+  bindCache(input$selectedSpp) %>% 
+  bindEvent(input$submitP1, ignoreNULL = FALSE)
 ```
 
 # Page
