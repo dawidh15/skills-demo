@@ -4,3 +4,4 @@
 .Ruserdata
 etl/etl-procedure.nb.html
 shiny-app/iattc_pd.sqlite3
+shiny-app/appCache/
