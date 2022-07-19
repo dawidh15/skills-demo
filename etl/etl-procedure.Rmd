@@ -76,7 +76,8 @@ if(!CheckTblLLTunaBillfish(dbPath))
   # Join tables
   LLDatan <- LLDatan %>% 
     inner_join(LLDatamt, by = c("Year", "Month", "Flag", "LatC5", "LonC5", "Hooks", "Species")) %>% 
-    rename(Lat = LatC5, Lon = LonC5)
+    rename(Lat = LatC5, Lon = LonC5) %>% 
+    mutate(`Date` = as.numeric(as_datetime(paste0(Year, "-",Month,"-01"))) )
   
   # Clean
   rm(LLDatamt)
@@ -84,6 +85,9 @@ if(!CheckTblLLTunaBillfish(dbPath))
   
   WriteLLTunaBilfishTbl(dbPath, LLDatan)
   rm(LLDatan)
+  
+  # Update tables that depend on main table
+  UpdateAuxiliaryTables(dbPath)
   
 }
 
