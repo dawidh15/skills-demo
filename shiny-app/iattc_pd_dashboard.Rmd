@@ -31,6 +31,7 @@ shinyOptions(cache = cachem::cache_disk(path_join(c(".","appCache"))))
 
 dat_sp_catch_by_spp <- GetTable(".", "General Spatial Data")
 dat_spp_time <- GetTable(".", "Catch Time Series")
+dat_prop_ctch <- GetTable(table_name = "Proportional Catches by Period-Flag")
 
 ```
 
