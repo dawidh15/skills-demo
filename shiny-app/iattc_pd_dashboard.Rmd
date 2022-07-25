@@ -96,50 +96,138 @@ output$CatchTimeSeries <-
   bindEvent(input$submitP1, ignoreNULL = FALSE)
 ```
 
-# Page
+# Flag {data-orientation=rows}
 
-## Column {data-width=350}
+## Input {.sidebar data-width=200}
+
+```{r}
+defaultFlag <- pull(skillsTools::GetFlagNames("."), Flag) %>% first()
+
+selectInput("selectedFlag"
+            , label = "Select a Flag"
+            , choices = skillsTools::GetFlagNames(".")
+            , multiple = FALSE
+            ,selected = defaultFlag)
+periods <- skillsTools::GetTimePeriod(".")
+
+
+sliderInput(
+  "sliderPeriod",
+  "Select a time period",
+  value = max(periods),
+  min = min(periods),
+  max = max(periods),
+  step = 1L
+)
+ 
+actionButton("submitP2", label = "Apply", icon = icon("filter"))
+```
+
+
+```{r}
+ScaledCatchesData <- 
+  reactive({
+    dat_prop_ctch %>% 
+      filter(Period == input$sliderPeriod & Flag == input$selectedFlag)
+  }) %>% 
+  bindEvent(input$submitP2, ignoreNULL = FALSE)
+
+ranks <- reactive({ 
+  dat_prop_ctch %>% 
+    filter(Period == input$sliderPeriod) %>%
+    pull(Ranking) %>%
+    max(na.rm = TRUE)
+  }) %>% 
+  bindEvent(input$submitP2, ignoreNULL = FALSE)
+
+thisRanking <- reactive({ 
+  dat_prop_ctch %>% 
+    filter(Period == input$sliderPeriod & Flag == input$selectedFlag) %>%
+    pull(Ranking) %>%
+    min(na.rm = TRUE)
+  }) %>% 
+  bindEvent(input$submitP2, ignoreNULL = FALSE)
+
+maxCatch <- 
+  reactive({ 
+  dat_prop_ctch %>% 
+    filter(Period == input$sliderPeriod) %>%
+    pull(Weight) %>%
+    max(na.rm = TRUE) %>%
+    formatC(big.mark = " ",format = "f", digits = 0)
+  })  %>% 
+  bindEvent(input$submitP2, ignoreNULL = FALSE)
+
+```
+
+
+## Row
+
+
+### Chart A
+
+```{r}
+    valueBoxOutput("ThisRanks")
+
+output$ThisRanks <- renderValueBox(
+  flexdashboard::valueBox(maxCatch(), caption = "Max Catch by species (mt), during this period")
+)
+```
 
 
 ### Chart B
 
 ```{r}
-inputPanel(numericInput(
-  "num1",
-  "Input Between 1 and 50",
-  value = 25,
-  min = 1,
-  max = 50,
-  step = 5
-))
+gaugeOutput("FlagRank")
 
-renderGauge(
-  gauge(
-  input$num1,
-  min = 1,
-  max = 50
-  ,
-  sectors = gaugeSectors(
-    success = c(1, 20),
-    warning = c(21, 40),
-    danger = c(41, 50),
-    colors = c("green", "yellow", "red")
-  ),
+
+output$FlagRank <-
+  renderGauge(
+    gauge(
+    round(100 * (ranks() / thisRanking()) / ranks(), digits = 0),
+    min = 0,
+    max = 100,
+    #symbol ='%',
+    sectors = gaugeSectors(
+      success = c(0,25),
+      warning = c(26,75),
+      danger = c(76,100),
+      colors = c("blue", "yellow", "red")
+    )
+    , label = "Fishing Pressure"
+  )
 )
-  
-)
+
+# 
+# output$FlagRank <- 
+#   renderGauge(
+#     gauge(
+#     ranks(),
+#     min = 1,
+#     max = 100
+#     ,
+#     sectors = gaugeSectors(
+#       success = c(1,20),
+#       warning = c(21,40),
+#       danger = c(40,69),
+#       colors = c("green", "yellow", "red")
+#     )
+#   )
+# )
+
 ```
 
-### Linking
+## Scaled Catches
 
-You can link to a dashboard page with either of the following syntaxes:
+```{r}
 
-[Page 2]
+fillCol(plotOutput("ScaledCatches"))
+output$ScaledCatches <- 
+  renderPlot(PlotByFlag(ScaledCatchesData()))
+```
 
-[Page Two](#page-2)
 
-The second syntax is used when you want a custom name for the link 
-(rather than just using the page title).
+
 
 # Page 2 {data-orientation=rows data-navmenu="Menu B"}
 
