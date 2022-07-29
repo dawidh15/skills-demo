@@ -1,0 +1,339 @@
+---
+title: "IATTC Public Domain Data"
+runtime: shiny
+output:
+  flexdashboard::flex_dashboard:
+    orientation: columns
+    vertical_layout: fill
+    theme:
+      bootswatch: united
+    logo: logo.png
+    favicon: logo.png
+resource_files:
+- iattc_pd.sqlite3
+---
+
+# Historical by Spp. {data-orientation=rows}
+
+```{r setup, include=FALSE, context = "server"}
+library(flexdashboard)
+library(shiny)
+library(dygraphs)
+
+#Install once using
+#devtools::install_github("dawidh15/skillsTools", auth_token = "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",upgrade = "never")
+# THen comment out
+
+library(skillsTools)
+# library(leaflet)
+# bslib::bs_themer() # Activates Theme selection tool
+# thematic::thematic_rmd() # set ggplot in theme colors
+
+# ------------CACHE----------------
+# Store cache on disk, is persistent across R processes
+# Otherwise, cache is stored in memory
+# See https://shiny.rstudio.com/articles/caching.html
+#shinyOptions(cache = cachem::cache_disk(file.path(dirname(tempdir()), "myapp-cache")))
+shinyOptions(cache = cachem::cache_disk(path_join(c(".","appCache"))))
+
+dat_sp_catch_by_spp <- GetTable(".", "General Spatial Data")
+dat_spp_time <- GetTable(".", "Catch Time Series By Species")
+dat_prop_ctch <- GetTable(table_name = "Proportional Catches by Period-Flag")
+dat_flag_time <- GetTable(table_name = "Catch Time Series By Flag")
+dat_sp_flag_period <- GetTable(table_name = "Catch By Space-Period-Flag")
+
+```
+
+## Column {.sidebar data-width=200}
+
+```{r}
+selectInput("selectedSpp"
+            , label = "Select a species"
+            , choices = skillsTools::GetSppNames(".")
+            , multiple = FALSE
+            , selected = "ALL")
+
+actionButton("submitP1", label = "Apply", icon = icon("filter"))
+```
+
+
+## Map Page 1  {data-height=300}
+
+### Instructions
+
+- First Page contains of catches by species.
+    - Select a species in the dropdown list
+    - Click apply generate the plots.
+    - Note that images are cached (image are shown quicker for previously selected data)
+- Second tab shows general information of catches by country (flag)
+    - Use the play button to watch an animation.
+- Third tab shows detailed information about species caught by flag.
+    - Click "Apply Filter" to see the changes.
+
+### Historical catches by species
+
+```{r}
+# Get spp from input when Apply button is pressed
+# add ignoreNULL = FALSE, this allows to use the default selected value for the input
+#this_spp <- eventReactive(input$submitP1, valueExpr = input$selectedSpp,ignoreNULL = FALSE)
+
+```
+
+
+```{r}
+fillCol(
+  plotOutput( "HistoricalCatchMap", height = "100%" )
+)
+output$HistoricalCatchMap <- 
+  renderPlot( MapCatchesBySpp(filter(dat_sp_catch_by_spp, Species == input$selectedSpp ))) %>% 
+  bindCache(input$selectedSpp) %>% 
+  bindEvent(input$submitP1, ignoreNULL = FALSE)
+```
+
+## Time series by spp {data-height=150}
+### Historical catch (mt)
+
+```{r}
+fillCol(
+ dygraphOutput("CatchTimeSeries", height = "100%") 
+)
+
+output$CatchTimeSeries <- 
+  renderDygraph({
+    # browser()
+    plot_dat_spp_time <-
+      dat_spp_time %>%
+      filter(Species == input$selectedSpp) %>%
+      select(-Species)
+    dygraph(plot_dat_spp_time) %>% 
+      dyRangeSelector() }) %>% 
+  bindCache(input$selectedSpp) %>% 
+  bindEvent(input$submitP1, ignoreNULL = FALSE)
+```
+
+
+# Flag {data-orientation=rows}
+
+## Input {.sidebar data-width=200}
+
+```{r}
+defaultFlag <- pull(skillsTools::GetFlagNames("."), Flag) %>% first()
+
+selectInput("selectedFlagGeneral"
+            , label = "Select a Flag"
+            , choices = skillsTools::GetFlagNames(".")
+            , multiple = FALSE
+            ,selected = defaultFlag)
+periods <- skillsTools::GetTimePeriod(".")
+
+
+sliderInput(
+  "sliderPeriodFlag",
+  "Select a time period",
+  value = max(periods),
+  min = min(periods),
+  max = max(periods),
+  step = 1L,
+  animate = animationOptions(interval = 3000, loop = TRUE)
+)
+
+minyear <- 
+  reactive(
+    {
+      dat_sp_flag_period %>% 
+        filter(Flag == input$selectedFlagGeneral & Period == input$sliderPeriodFlag) %>% 
+        pull(MinYear) %>% 
+        min()
+    }
+  ) %>% 
+  bindCache(input$selectedFlagGeneral, input$sliderPeriodFlag)
+
+maxyear <- 
+  reactive(
+    {
+      dat_sp_flag_period %>% 
+        filter(Flag == input$selectedFlagGeneral & Period == input$sliderPeriodFlag) %>% 
+        pull(MaxYear) %>% 
+        max()
+    }
+  ) %>% 
+  bindCache(input$selectedFlagGeneral, input$sliderPeriodFlag)
+```
+
+
+## Header {data-height = 100}
+
+### Flag and period
+
+```{r}
+output$headerFlagPeriod <- 
+  renderValueBox( {
+    my <- ifelse(is.finite(minyear()), minyear(), "No-Data")
+    mxy <- ifelse(is.finite(maxyear()), maxyear(), "No-Data")
+    flexdashboard::valueBox(
+      glue("Flag: {input$selectedFlagGeneral}. Period from:  {my} to {mxy}.")
+    ,caption = "Historical catches by flag", color = "blue")
+  }
+  )
+    
+    
+valueBoxOutput("headerFlagPeriod")
+```
+
+## Fleet expansion {data-height 300}
+
+### Catches by flag (mt) {data-width=150}
+
+```{r}
+plotOutput( "FlagCatchMap", height = "100%" )
+
+output$FlagCatchMap <- 
+  renderPlot( 
+    {
+      filtered_dat_sp_flag_period <- filter(dat_sp_flag_period,
+                 Flag == input$selectedFlagGeneral & Period == input$sliderPeriodFlag)
+      
+      if (nrow(filtered_dat_sp_flag_period) == 0)
+      {
+        filtered_dat_sp_flag_period <- data.frame()
+      } 
+          MapCatchesBySpp( filtered_dat_sp_flag_period )
+    } # End render Plot
+ )  %>% 
+  bindCache(input$selectedFlagGeneral, input$sliderPeriodFlag)
+
+```
+
+
+### Historical catches by flag (mt) {data-width=300}
+
+```{r}
+fillCol(
+ dygraphOutput("CatchTimeSeriesFlag", height = "100%") 
+)
+
+output$CatchTimeSeriesFlag <- 
+  renderDygraph({
+    # browser()
+    plot_dat_flag_time <-
+      dat_flag_time %>%
+      filter(Flag == input$selectedFlagGeneral) %>%
+      select(-Flag)
+    dygraph(plot_dat_flag_time) %>% dyRangeSelector()
+  }) %>% 
+  bindCache(input$selectedFlagGeneral) 
+```
+
+
+# Flag Detailed {data-orientation=rows}
+
+## Input {.sidebar data-width=200}
+
+```{r}
+defaultFlag <- pull(skillsTools::GetFlagNames("."), Flag) %>% first()
+
+selectInput("selectedFlag"
+            , label = "Select a Flag"
+            , choices = skillsTools::GetFlagNames(".")
+            , multiple = FALSE
+            ,selected = defaultFlag)
+periods <- skillsTools::GetTimePeriod(".")
+
+
+sliderInput(
+  "sliderPeriod",
+  "Select a time period",
+  value = max(periods),
+  min = min(periods),
+  max = max(periods),
+  step = 1L
+)
+ 
+actionButton("submitP2", label = "Apply", icon = icon("filter"))
+```
+
+
+```{r}
+ScaledCatchesData <- 
+  reactive({
+    dat_prop_ctch %>% 
+      filter(Period == input$sliderPeriod & Flag == input$selectedFlag)
+  }) %>% 
+  bindEvent(input$submitP2, ignoreNULL = FALSE)
+
+ranks <- reactive({ 
+  dat_prop_ctch %>% 
+    filter(Period == input$sliderPeriod) %>%
+    pull(Ranking) %>%
+    max(na.rm = TRUE)
+  }) %>% 
+  bindEvent(input$submitP2, ignoreNULL = FALSE)
+
+thisRanking <- reactive({ 
+  dat_prop_ctch %>% 
+    filter(Period == input$sliderPeriod & Flag == input$selectedFlag) %>%
+    pull(Ranking) %>%
+    min(na.rm = TRUE)
+  }) %>% 
+  bindEvent(input$submitP2, ignoreNULL = FALSE)
+
+maxCatch <- 
+  reactive({ 
+  dat_prop_ctch %>% 
+    filter(Period == input$sliderPeriod) %>%
+    pull(Weight) %>%
+    max(na.rm = TRUE) %>%
+    formatC(big.mark = " ",format = "f", digits = 0)
+  })  %>% 
+  bindEvent(input$submitP2, ignoreNULL = FALSE)
+
+```
+
+
+## Row
+
+
+### Maximum Catch of a species by period
+
+```{r}
+    valueBoxOutput("MaximumCatch")
+
+output$MaximumCatch <- renderValueBox(
+  valueBox(maxCatch(), caption = "Max Catch by species (mt), during this period")
+)
+```
+
+
+### Relative fishing pressure
+
+```{r}
+gaugeOutput("FlagRank")
+
+
+output$FlagRank <-
+  renderGauge(
+    gauge(
+    round(100 * (ranks() / thisRanking()) / ranks(), digits = 0),
+    min = 0,
+    max = 100,
+    #symbol ='%',
+    sectors = gaugeSectors(
+      success = c(0,25),
+      warning = c(26,75),
+      danger = c(76,100),
+      colors = c("blue", "yellow", "red")
+    )
+    , label = "Fishing Pressure"
+  )
+)
+```
+
+## Scaled Catches (% of max catch)
+
+```{r}
+
+fillCol(plotOutput("ScaledCatches"))
+output$ScaledCatches <- 
+  renderPlot(PlotByFlag(ScaledCatchesData()))
+```
+

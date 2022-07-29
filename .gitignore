@@ -5,3 +5,6 @@
 etl/etl-procedure.nb.html
 shiny-app/iattc_pd.sqlite3
 shiny-app/appCache/
+appCache/
+rsconnect/documents/iattc_pd_dashboard.Rmd/shinyapps.io/dawidh15/iattc_pd_dashboard.dcf
+iattc_pd.sqlite3
